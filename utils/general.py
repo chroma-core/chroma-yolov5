@@ -849,6 +849,7 @@ def non_max_suppression(
         classes=None,
         agnostic=False,
         multi_label=False,
+        with_embeddings=False,
         labels=(),
         max_det=300,
         nm=0,  # number of masks
@@ -860,12 +861,18 @@ def non_max_suppression(
     """
 
     if isinstance(prediction, (list, tuple)):  # YOLOv5 model in validation model, output = (inference_out, loss_out)
+        # Filter embeddings alongside predictions to output them
+        if with_embeddings:
+            embedding = prediction[2] # Last part of the tuple has raw conv. output
         prediction = prediction[0]  # select only inference output
+
 
     device = prediction.device
     mps = 'mps' in device.type  # Apple MPS
     if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
         prediction = prediction.cpu()
+        if with_embeddings:
+            embedding = embedding.cpu()
     bs = prediction.shape[0]  # batch size
     nc = prediction.shape[2] - nm - 5  # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
@@ -886,10 +893,15 @@ def non_max_suppression(
     t = time.time()
     mi = 5 + nc  # mask start index
     output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+    if with_embeddings:
+        ed = embedding.shape[-1] # Embeddings dimensionality 
+        embedding_output = [torch.zeros((0,ed), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
+        if with_embeddings:
+            e = embedding[xi][xc[xi]]
 
         # Cat apriori labels if autolabelling
         if labels and len(labels[xi]):
@@ -915,13 +927,19 @@ def non_max_suppression(
         if multi_label:
             i, j = (x[:, 5:mi] > conf_thres).nonzero(as_tuple=False).T
             x = torch.cat((box[i], x[i, 5 + j, None], j[:, None].float(), mask[i]), 1)
+            if with_embeddings:
+                e = e[i]
         else:  # best class only
             conf, j = x[:, 5:mi].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
+            if with_embeddings:
+                e = e[conf.view(-1) > conf_thres]
 
         # Filter by class
         if classes is not None:
             x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
+            if with_embeddings:
+                e = e[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
 
         # Apply finite constraint
         # if not torch.isfinite(x).all():
@@ -933,8 +951,12 @@ def non_max_suppression(
             continue
         elif n > max_nms:  # excess boxes
             x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence
+            if with_embeddings:
+                e = e[x[:, 4].argsort(descending=True)[:max_nms]]
         else:
             x = x[x[:, 4].argsort(descending=True)]  # sort by confidence
+            if with_embeddings:
+                e = e[x[:, 4].argsort(descending=True)]
 
         # Batched NMS
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
@@ -951,13 +973,17 @@ def non_max_suppression(
                 i = i[iou.sum(1) > 1]  # require redundancy
 
         output[xi] = x[i]
+        if with_embeddings:
+            embedding_output[xi] = e[i]
         if mps:
             output[xi] = output[xi].to(device)
+            if with_embeddings:
+                embedding_output[xi] = embedding_output[xi].to(device)
         if (time.time() - t) > time_limit:
             LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
             break  # time limit exceeded
 
-    return output
+    return output, embedding_output if with_embeddings else output
 
 
 def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_optimizer()

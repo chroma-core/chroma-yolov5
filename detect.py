@@ -31,6 +31,7 @@ import platform
 import sys
 from pathlib import Path
 
+import chroma_client
 import torch
 
 FILE = Path(__file__).resolve()
@@ -108,6 +109,9 @@ def run(
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
     vid_path, vid_writer = [None] * bs, [None] * bs
 
+    # Chroma client
+    chroma = chroma_client.Chroma()
+
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
@@ -126,10 +130,22 @@ def run(
 
         # NMS
         with dt[2]:
-            pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+            pred, embeddings = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
+
+        # Get the class names
+        class_names = [names[int(p[5])] for p in pred[0]]    
+
+        # Set the path to be the same for each detection 
+        paths = [path] * len(pred[0])
+
+        #TODO remove metadata and inferences
+        metadata = ["test_metadata"] * len(pred[0])
+        inferences = ["test_inference"] * len(pred[0])
+
+        chroma.log_batch(embedding_data=embeddings[0].float().tolist(),input_uri=paths,category_name=class_names,dataset="yolo_test", metadata=metadata, inference_data=inferences)
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
