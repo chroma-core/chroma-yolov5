@@ -983,7 +983,7 @@ def non_max_suppression(
             LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
             break  # time limit exceeded
 
-    return output, embedding_output if with_embeddings else output
+    return (output, embedding_output) if with_embeddings else output
 
 
 def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_optimizer()
