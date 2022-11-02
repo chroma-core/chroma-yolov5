@@ -141,10 +141,6 @@ def run(
         # Set the path to be the same for each detection 
         paths = [path] * len(pred[0])
 
-        #TODO remove metadata and inferences
-        metadata = ["test_metadata"] * len(pred[0])
-        inferences = ["test_inference"] * len(pred[0])
-
         chroma.log(embedding_data=embeddings[0].float().tolist(),input_uri=paths,category_name=class_names,dataset="yolo_test")
 
         # Process predictions
