@@ -24,7 +24,7 @@ import torch.nn.functional as F
 import torchvision
 import yaml
 from PIL import ExifTags, Image, ImageOps
-from torch.utils.data import DataLoader, Dataset, dataloader, distributed
+from torch.utils.data import DataLoader, Dataset, dataloader, distributed, IterableDataset
 from tqdm import tqdm
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
@@ -151,6 +151,13 @@ def create_dataloader(path,
                   worker_init_fn=seed_worker,
                   generator=generator), dataset
 
+def create_imageloader(path, imgsz, batch_size, stride, workers):
+    dataset = LoadImages(path, imgsz, stride=int(stride), auto=False, batch_size=batch_size)
+    batch_size = min(batch_size, len(dataset))
+    nd = torch.cuda.device_count()  # number of CUDA devices
+    nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
+    nw = min([nw, len(dataset) // batch_size])
+    return DataLoader(dataset=dataset, batch_size=batch_size,num_workers=nw,pin_memory=PIN_MEMORY, collate_fn=LoadImages.collate_fn), dataset
 
 class InfiniteDataLoader(dataloader.DataLoader):
     """ Dataloader that reuses workers
@@ -235,9 +242,10 @@ class LoadScreenshots:
         return str(self.screen), im, im0, None, s  # screen, img, original img, im0s, s
 
 
-class LoadImages:
+class LoadImages(IterableDataset):
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
-    def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1):
+    def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1, batch_size=1):
+        super(LoadImages).__init__()
         files = []
         for p in sorted(path) if isinstance(path, (list, tuple)) else [path]:
             p = str(Path(p).resolve())
@@ -263,6 +271,7 @@ class LoadImages:
         self.auto = auto
         self.transforms = transforms  # optional
         self.vid_stride = vid_stride  # video frame-rate stride
+        self.batch_size = batch_size
         if any(videos):
             self._new_video(videos[0])  # new video
         else:
@@ -271,11 +280,24 @@ class LoadImages:
                             f'Supported formats are:\nimages: {IMG_FORMATS}\nvideos: {VID_FORMATS}'
 
     def __iter__(self):
-        self.count = 0
+        if not torch.utils.data.get_worker_info():
+            self.count = 0
+            self.end = self.nf
+            return self
+        
+        uid = torch.utils.data.get_worker_info().id
+        
+        if self.batch_size * uid >= self.nf:
+            LOGGER.warning(f"WARNING ⚠️ worker {uid} does not have anything to do. Too many workers for batch size {self.batch_size} and total length {self.nf}?")
+            return iter([])
+        
+        self.end = min(self.batch_size * uid + self.batch_size, self.nf) 
+        self.count = self.batch_size * uid
+        
         return self
 
     def __next__(self):
-        if self.count == self.nf:
+        if self.count == self.end:
             raise StopIteration
         path = self.files[self.count]
 
@@ -313,6 +335,11 @@ class LoadImages:
             im = np.ascontiguousarray(im)  # contiguous
 
         return path, im, im0, self.cap, s
+    
+    def collate_fn(batch):
+        path, im, _, _, _ = zip(*batch)
+        im = list(map(torch.from_numpy,im))
+        return path, torch.stack(im,0)
 
     def _new_video(self, path):
         # Create a new video capture object
