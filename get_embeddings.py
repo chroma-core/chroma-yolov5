@@ -83,7 +83,9 @@ def run(
         names = dict(enumerate(names))
     
     dt = Profile(), Profile(), Profile(), Profile()  # profiling times
+    
     for paths, im in tqdm(dataloader):
+        # Image Transform
         with dt[0]:
             if cuda:
                 im = im.to(device, non_blocking=True)
@@ -107,6 +109,12 @@ def run(
             paths = [p for i, path in enumerate(paths) for p in [path]*len(preds[i])]
 
             chroma.log(embedding_data=torch.cat(embeddings,0).tolist(),input_uri=paths,category_name=class_names,dataset="yolo_test")
+    
+        # Print profiling times
+        LOGGER.info(f'Image Transform time: {dt[0].dt:.3f}s, Inference time: {dt[1].dt:.3f}s, NMS time: {dt[2].dt:.3f}s, Chroma time: {dt[3].dt:.3f}s')
+
+    # Persist Chroma data
+    chroma.persist()
     
     return
 
