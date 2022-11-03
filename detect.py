@@ -34,6 +34,8 @@ from pathlib import Path
 import chroma_client
 import torch
 
+from models.yolo import Detect
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
@@ -97,6 +99,11 @@ def run(
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
+    # Set with embedding output 
+    for k, m in model.named_modules():
+        if isinstance(m, Detect):
+            m.with_embeddings = True
+
     # Dataloader
     bs = 1  # batch_size
     if webcam:
@@ -130,7 +137,7 @@ def run(
 
         # NMS
         with dt[2]:
-            pred, embeddings = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
+            pred, _, embeddings = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)

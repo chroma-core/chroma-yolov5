@@ -40,6 +40,7 @@ class Detect(nn.Module):
     stride = None  # strides computed during build
     dynamic = False  # force grid reconstruction
     export = False  # export mode
+    with_embeddings = False # output embeddings 
 
     def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
@@ -78,7 +79,7 @@ class Detect(nn.Module):
                 z.append(y.view(bs, self.na * nx * ny, self.no))
                 embeddings.append(x[i].view(bs, self.na * nx * ny, self.no))
 
-        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x, torch.cat(embeddings, 1))
+        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x, torch.cat(embeddings, 1)) if self.with_embeddings else (torch.cat(z, 1), x)
 
     def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device

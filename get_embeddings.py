@@ -89,7 +89,7 @@ def run(
 
         # NMS
         with dt[2]:
-            preds, embeddings = non_max_suppression(preds, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
+            preds, _, embeddings = non_max_suppression(preds, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
 
         # Log embeddings to Chroma
         with dt[3]:
