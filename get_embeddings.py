@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from models.common import DetectMultiBackend
+from models.yolo import Detect
 from utils.dataloaders import create_imageloader
 from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check_requirements, check_yaml,
                            non_max_suppression, print_args)
@@ -60,6 +61,12 @@ def run(
     model.eval()
     cuda = device.type != 'cpu'
 
+    # Set with embedding output 
+    for k, m in model.named_modules():
+        if isinstance(m, Detect):
+            m.with_embeddings = True
+
+
     model.warmup(imgsz=(1 if pt else batch_size, 3, imgsz, imgsz))  # warmup
     dataloader = create_imageloader(data[dataset],
                                     imgsz,
@@ -89,7 +96,7 @@ def run(
 
         # NMS
         with dt[2]:
-            preds, _, embeddings = non_max_suppression(preds, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
+            preds, embeddings = non_max_suppression(preds, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
 
         # Log embeddings to Chroma
         with dt[3]:

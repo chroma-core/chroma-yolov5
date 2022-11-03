@@ -31,10 +31,7 @@ import platform
 import sys
 from pathlib import Path
 
-import chroma_client
 import torch
-
-from models.yolo import Detect
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -99,11 +96,6 @@ def run(
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
-    # Set with embedding output 
-    for k, m in model.named_modules():
-        if isinstance(m, Detect):
-            m.with_embeddings = True
-
     # Dataloader
     bs = 1  # batch_size
     if webcam:
@@ -115,9 +107,6 @@ def run(
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
     vid_path, vid_writer = [None] * bs, [None] * bs
-
-    # Chroma client
-    chroma = chroma_client.Chroma()
 
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
@@ -137,18 +126,7 @@ def run(
 
         # NMS
         with dt[2]:
-            pred, _, embeddings = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, with_embeddings=True, max_det=max_det)
-
-        # Second-stage classifier (optional)
-        # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-
-        # Get the class names
-        class_names = [names[int(p[5])] for p in pred[0]]    
-
-        # Set the path to be the same for each detection 
-        paths = [path] * len(pred[0])
-
-        chroma.log(embedding_data=embeddings[0].float().tolist(),input_uri=paths,category_name=class_names,dataset="yolo_test")
+            pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
