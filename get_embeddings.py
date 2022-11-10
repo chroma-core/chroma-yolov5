@@ -25,6 +25,7 @@ from utils.torch_utils import select_device, smart_inference_mode
 def run(
             data,
             dataset='val',  # train, val, or test
+            dataset_name="",
             weights=None,  # model.pt path(s)
             batch_size=32,  # batch size
             imgsz=640,  # inference size (pixels)
@@ -108,20 +109,18 @@ def run(
             # Set the path to be the same for detections from the same image 
             paths = [p for i, path in enumerate(paths) for p in [path]*len(preds[i])]
 
-            chroma.log(embedding_data=torch.cat(embeddings,0).tolist(),input_uri=paths,category_name=class_names,dataset="yolo_test")
+            chroma.log(embedding_data=torch.cat(embeddings,0).tolist(),input_uri=paths,category_name=class_names,dataset=dataset_name)
     
         # Print profiling times
         LOGGER.info(f'Image Transform time: {dt[0].dt:.3f}s, Inference time: {dt[1].dt:.3f}s, NMS time: {dt[2].dt:.3f}s, Chroma time: {dt[3].dt:.3f}s')
 
-    # Persist Chroma data
-    chroma.persist()
-    
     return
 
 
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
+    parser.add_argument('--dataset-name', type=str, default="", help='dataset name for chroma storage')
     parser.add_argument('--dataset', default='val', help='train, val, or test')
     parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model path(s)')
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')

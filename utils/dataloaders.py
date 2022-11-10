@@ -152,7 +152,7 @@ def create_dataloader(path,
                   generator=generator), dataset
 
 def create_imageloader(path, imgsz, batch_size, stride, workers):
-    dataset = LoadImages(path, imgsz, stride=int(stride), auto=False, batch_size=batch_size)
+    dataset = LoadImages(path, imgsz, stride=int(stride), auto=False, n_workers=workers)
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
@@ -244,7 +244,7 @@ class LoadScreenshots:
 
 class LoadImages(IterableDataset):
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
-    def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1, batch_size=1):
+    def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1, n_workers=0):
         super(LoadImages).__init__()
         files = []
         for p in sorted(path) if isinstance(path, (list, tuple)) else [path]:
@@ -254,7 +254,15 @@ class LoadImages(IterableDataset):
             elif os.path.isdir(p):
                 files.extend(sorted(glob.glob(os.path.join(p, '*.*'))))  # dir
             elif os.path.isfile(p):
-                files.append(p)  # files
+                if '.txt' in p:
+                    p = Path(p)
+                    with open(p) as t:
+                        t = t.read().strip().splitlines()
+                        parent = str(p.parent) + os.sep
+                        files += [x.replace('./', parent) if x.startswith('./') else x for x in t]  # local to global path
+                        # f += [p.parent / x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
+                else:
+                    files.append(p)  # files
             else:
                 raise FileNotFoundError(f'{p} does not exist')
 
@@ -271,7 +279,7 @@ class LoadImages(IterableDataset):
         self.auto = auto
         self.transforms = transforms  # optional
         self.vid_stride = vid_stride  # video frame-rate stride
-        self.batch_size = batch_size
+        self.n_workers = n_workers
         if any(videos):
             self._new_video(videos[0])  # new video
         else:
@@ -285,14 +293,12 @@ class LoadImages(IterableDataset):
             self.end = self.nf
             return self
         
+        per_worker = self.nf // self.n_workers
+        
         uid = torch.utils.data.get_worker_info().id
-        
-        if self.batch_size * uid >= self.nf:
-            LOGGER.warning(f"WARNING ⚠️ worker {uid} does not have anything to do. Too many workers for batch size {self.batch_size} and total length {self.nf}?")
-            return iter([])
-        
-        self.end = min(self.batch_size * uid + self.batch_size, self.nf) 
-        self.count = self.batch_size * uid
+
+        self.end = uid * per_worker + per_worker if uid < (self.n_workers - 1) else self.nf
+        self.count = uid * per_worker
         
         return self
 
