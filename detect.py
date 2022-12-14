@@ -128,6 +128,9 @@ def run(
         with dt[2]:
             pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
+        # Second-stage classifier (optional)
+        # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
+
         # Process predictions
         for i, det in enumerate(pred):  # per image
             seen += 1
