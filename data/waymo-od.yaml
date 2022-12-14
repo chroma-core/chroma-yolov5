@@ -1,0 +1,22 @@
+# Waymo Open Dataset: https://waymo.com/open/
+
+path: ../datasets/waymo-od
+train: 
+#  - training/images_sf.txt
+  - training/images_phx.txt
+#  - training/images_other.txt
+val:
+#  - validation/images_sf.txt
+  - validation/images_phx.txt
+#  - validation/images_other.txt
+#  - confusion/confusion.txt
+
+# Classes
+names:
+  0: Unkonwn
+  1: Vehicle
+  2: Pedestrian
+  3: Sign
+  4: Cyclist
+
+# TODO: Download and transform script 
