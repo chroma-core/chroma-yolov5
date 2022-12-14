@@ -151,6 +151,7 @@ def create_dataloader(path,
                   worker_init_fn=seed_worker,
                   generator=generator), dataset
 
+# A new dataloader for cases where we have input images but no labels. 
 def create_imageloader(path, imgsz, batch_size, stride, workers):
     dataset = LoadImages(path, imgsz, stride=int(stride), auto=False, n_workers=workers)
     batch_size = min(batch_size, len(dataset))
@@ -241,7 +242,7 @@ class LoadScreenshots:
         self.frame += 1
         return str(self.screen), im, im0, None, s  # screen, img, original img, im0s, s
 
-
+# An iterable dataset that loads images, compatible with the IterableDataset interface. 
 class LoadImages(IterableDataset):
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
     def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1, n_workers=0):

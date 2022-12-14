@@ -841,7 +841,8 @@ def clip_segments(boxes, shape):
         boxes[:, 0] = boxes[:, 0].clip(0, shape[1])  # x
         boxes[:, 1] = boxes[:, 1].clip(0, shape[0])  # y
 
-
+# We modify the original non_max_suppression function to return the embeddings as well
+# In practice, this means making sure that they are extracted and filtered alongside the predictions
 def non_max_suppression(
         prediction,
         conf_thres=0.25,
@@ -865,7 +866,6 @@ def non_max_suppression(
         if with_embeddings:
             embedding = prediction[2] # Last part of the tuple has raw conv. output
         prediction = prediction[0]  # select only inference output
-
 
     device = prediction.device
     mps = 'mps' in device.type  # Apple MPS
@@ -901,7 +901,7 @@ def non_max_suppression(
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
         if with_embeddings:
-            e = embedding[xi][xc[xi]]
+            e = embedding[xi][xc[xi]] # Filter to the same indices as the predictions
 
         # Cat apriori labels if autolabelling
         if labels and len(labels[xi]):
@@ -928,18 +928,18 @@ def non_max_suppression(
             i, j = (x[:, 5:mi] > conf_thres).nonzero(as_tuple=False).T
             x = torch.cat((box[i], x[i, 5 + j, None], j[:, None].float(), mask[i]), 1)
             if with_embeddings:
-                e = e[i]
+                e = e[i] # Filter to the same indices as the predictions
         else:  # best class only
             conf, j = x[:, 5:mi].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
             if with_embeddings:
-                e = e[conf.view(-1) > conf_thres]
+                e = e[conf.view(-1) > conf_thres] # Filter to the same indices as the predictions. Note that no concatenation is needed here.
 
         # Filter by class
         if classes is not None:
             x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
             if with_embeddings:
-                e = e[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
+                e = e[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)] # Filter to the same indices as the predictions
 
         # Apply finite constraint
         # if not torch.isfinite(x).all():
@@ -952,11 +952,11 @@ def non_max_suppression(
         elif n > max_nms:  # excess boxes
             x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence
             if with_embeddings:
-                e = e[x[:, 4].argsort(descending=True)[:max_nms]]
+                e = e[x[:, 4].argsort(descending=True)[:max_nms]] # Filter to the same indices as the predictions
         else:
             x = x[x[:, 4].argsort(descending=True)]  # sort by confidence
             if with_embeddings:
-                e = e[x[:, 4].argsort(descending=True)]
+                e = e[x[:, 4].argsort(descending=True)] # Filter to the same indices as the predictions
 
         # Batched NMS
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
@@ -974,7 +974,7 @@ def non_max_suppression(
 
         output[xi] = x[i]
         if with_embeddings:
-            embedding_output[xi] = e[i]
+            embedding_output[xi] = e[i] # Assign the embeddings to the output
         if mps:
             output[xi] = output[xi].to(device)
             if with_embeddings:

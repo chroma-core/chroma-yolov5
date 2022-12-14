@@ -34,7 +34,7 @@ try:
 except ImportError:
     thop = None
 
-
+# We modify the original Detect class to output the embeddings along with the predictions
 class Detect(nn.Module):
     # YOLOv5 Detect head for detection models
     stride = None  # strides computed during build
@@ -77,7 +77,7 @@ class Detect(nn.Module):
                     wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
                     y = torch.cat((xy, wh, conf), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no))
-                embeddings.append(x[i].view(bs, self.na * nx * ny, self.no))
+                embeddings.append(x[i].view(bs, self.na * nx * ny, self.no)) # The embeddings are the raw output of the last conv layer, in the same shape as the predictions
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x, torch.cat(embeddings, 1)) if self.with_embeddings else (torch.cat(z, 1), x)
 
